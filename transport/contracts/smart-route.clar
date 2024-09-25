@@ -46,6 +46,8 @@
          (base-price (var-get base-fare))
          (dynamic-price (unwrap! (calculate-fare base-price hour demand-level special-event-id) err-invalid-input)))
         (asserts! (> expiry block-height) err-invalid-input)
+        (asserts! (< hour u24) err-invalid-input)
+        (asserts! (< demand-level u5) err-invalid-input)
         (try! (stx-transfer? dynamic-price tx-sender (as-contract tx-sender)))
         (map-set ride-tokens new-id {value: dynamic-price, owner: tx-sender, used: false, expiry: expiry})
         (var-set token-id-nonce new-id)
@@ -88,8 +90,7 @@
         (asserts! (is-some (map-get? bus-operators tx-sender)) err-unauthorized)
         (asserts! (and (>= latitude min-latitude) (<= latitude max-latitude)) err-invalid-input)
         (asserts! (and (>= longitude min-longitude) (<= longitude max-longitude)) err-invalid-input)
-        (map-set bus-locations bus-id (merge bus {latitude: latitude, longitude: longitude}))
-        (ok true)))
+        (ok (map-set bus-locations bus-id (merge bus {latitude: latitude, longitude: longitude})))))
 
 (define-read-only (get-bus-info (bus-id uint))
     (map-get? bus-locations bus-id))
@@ -100,8 +101,7 @@
         (asserts! (is-eq tx-sender contract-owner) err-owner-only)
         (asserts! (is-none (map-get? routes route-id)) err-already-exists)
         (asserts! (<= (len stops) max-route-stops) err-invalid-input)
-        (map-set routes route-id {name: name, stops: stops})
-        (ok true)))
+        (ok (map-set routes route-id {name: name, stops: stops}))))
 
 (define-read-only (get-route (route-id uint))
     (map-get? routes route-id))
@@ -136,8 +136,7 @@
     (begin
         (asserts! (is-eq tx-sender contract-owner) err-owner-only)
         (asserts! (and (>= multiplier min-multiplier) (<= multiplier max-multiplier)) err-invalid-input)
-        (map-set special-event-multipliers event-id multiplier)
-        (ok true)))
+        (ok (map-set special-event-multipliers event-id multiplier))))
 
 (define-read-only (calculate-fare (base-price uint) (hour uint) (demand-level uint) (special-event-id (optional uint)))
     (let
@@ -160,15 +159,13 @@
 (define-public (revoke-operator (operator principal))
     (begin
         (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-        (map-delete bus-operators operator)
-        (ok true)))
+        (ok (map-delete bus-operators operator))))
 
 ;; Loyalty program functions
 (define-public (add-loyalty-points (user principal) (points uint))
     (begin
         (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender (as-contract tx-sender))) err-unauthorized)
-        (map-set loyalty-points user (+ (default-to u0 (map-get? loyalty-points user)) points))
-        (ok true)))
+        (ok (map-set loyalty-points user (+ (default-to u0 (map-get? loyalty-points user)) points)))))
 
 (define-public (redeem-loyalty-points (points uint))
     (let ((user-points (default-to u0 (map-get? loyalty-points tx-sender))))
@@ -184,8 +181,7 @@
 (define-public (add-carbon-credits (amount uint))
     (begin
         (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender (as-contract tx-sender))) err-unauthorized)
-        (var-set carbon-credits (+ (var-get carbon-credits) amount))
-        (ok true)))
+        (ok (var-set carbon-credits (+ (var-get carbon-credits) amount)))))
 
 (define-read-only (get-carbon-credits)
     (ok (var-get carbon-credits)))
@@ -234,8 +230,7 @@
 (define-public (deposit (amount uint))
     (begin
         (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
-        (map-set balances tx-sender (+ (default-to u0 (map-get? balances tx-sender)) amount))
-        (ok true)))
+        (ok (map-set balances tx-sender (+ (default-to u0 (map-get? balances tx-sender)) amount)))))
 
 (define-public (withdraw (amount uint))
     (let ((current-balance (default-to u0 (map-get? balances tx-sender))))
@@ -243,4 +238,3 @@
         (try! (as-contract (stx-transfer? amount tx-sender tx-sender)))
         (map-set balances tx-sender (- current-balance amount))
         (ok true)))
-        
