@@ -188,4 +188,60 @@
         (try! (as-contract (stx-transfer? amount tx-sender tx-sender)))
         (map-set balances tx-sender (- current-balance amount))
         (ok true)))
-        
+
+;; New data maps for dynamic pricing
+(define-map time-multipliers uint uint)
+(define-map demand-multipliers uint uint)
+(define-map special-event-multipliers uint uint)
+
+;; New constants for pricing
+(define-constant max-multiplier u500) ;; Maximum 5x multiplier (500%)
+(define-constant min-multiplier u50)  ;; Minimum 0.5x multiplier (50%)
+
+;; Function to set time-based multipliers
+(define-public (set-time-multiplier (hour uint) (multiplier uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (and (< hour u24) (>= multiplier min-multiplier) (<= multiplier max-multiplier)) err-invalid-input)
+        (map-set time-multipliers hour multiplier)
+        (ok true)))
+
+;; Function to set demand-based multipliers
+(define-public (set-demand-multiplier (demand-level uint) (multiplier uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (and (< demand-level u5) (>= multiplier min-multiplier) (<= multiplier max-multiplier)) err-invalid-input)
+        (map-set demand-multipliers demand-level multiplier)
+        (ok true)))
+
+;; Function to set special event multipliers
+(define-public (set-special-event-multiplier (event-id uint) (multiplier uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (and (>= multiplier min-multiplier) (<= multiplier max-multiplier)) err-invalid-input)
+        (map-set special-event-multipliers event-id multiplier)
+        (ok true)))
+
+;; Function to calculate the current fare
+(define-read-only (calculate-fare (base-price uint) (hour uint) (demand-level uint) (special-event-id (optional uint)))
+    (let
+        ((time-mult (default-to u100 (map-get? time-multipliers hour)))
+         (demand-mult (default-to u100 (map-get? demand-multipliers demand-level)))
+         (event-mult (match special-event-id
+                        event-id (default-to u100 (map-get? special-event-multipliers event-id))
+                        u100))
+         (total-mult (/ (* (* time-mult demand-mult) event-mult) (* u100 u100))))
+        (ok (/ (* base-price total-mult) u100))))
+
+;; Updated function to mint ride token with dynamic pricing
+(define-public (mint-ride-token (expiry uint) (hour uint) (demand-level uint) (special-event-id (optional uint)))
+    (let
+        ((new-id (+ (var-get token-id-nonce) u1))
+         (base-price (var-get base-fare))
+         (dynamic-price (unwrap! (calculate-fare base-price hour demand-level special-event-id) err-invalid-input)))
+        (asserts! (> expiry block-height) err-invalid-input)
+        (try! (stx-transfer? dynamic-price tx-sender (as-contract tx-sender)))
+        (map-set ride-tokens new-id {value: dynamic-price, owner: tx-sender, used: false, expiry: expiry})
+        (var-set token-id-nonce new-id)
+        (ok new-id)))
+
