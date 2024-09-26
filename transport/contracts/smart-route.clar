@@ -50,9 +50,10 @@
         (asserts! (< demand-level u5) err-invalid-input)
         (match special-event-id
             event-id (asserts! (and (is-some (map-get? special-event-multipliers event-id)) 
-                                    (<= event-id u1000))  ;; Add a reasonable upper limit for event IDs
+                                    (<= event-id u1000))
                                err-invalid-input)
             true)
+        (asserts! (and (> dynamic-price u0) (<= dynamic-price (* (var-get base-fare) u5))) err-invalid-input)
         (try! (stx-transfer? dynamic-price tx-sender (as-contract tx-sender)))
         (map-set ride-tokens new-id {value: dynamic-price, owner: tx-sender, used: false, expiry: expiry})
         (var-set token-id-nonce new-id)
@@ -96,11 +97,13 @@
         (asserts! (is-some (map-get? bus-operators tx-sender)) err-unauthorized)
         (asserts! (and (>= latitude min-latitude) (<= latitude max-latitude)) err-invalid-input)
         (asserts! (and (>= longitude min-longitude) (<= longitude max-longitude)) err-invalid-input)
+        (asserts! (<= bus-id (var-get token-id-nonce)) err-invalid-input)
         (ok (map-set bus-locations bus-id 
-            (merge bus {
-                latitude: latitude,
-                longitude: longitude
-            })))))
+            {latitude: latitude,
+             longitude: longitude,
+             route-id: (get route-id bus),
+             capacity: (get capacity bus),
+             passengers: (get passengers bus)}))))
 
 (define-read-only (get-bus-info (bus-id uint))
     (map-get? bus-locations bus-id))
